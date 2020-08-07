@@ -1,0 +1,142 @@
+---
+title: "ERP 9electrode analysis"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, cache = T}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+## set up
+```{r setup2, include=T, results='hide', echo=F, cache=T}
+library(readxl)
+library(lme4)
+library(lmerTest)
+dat <- read_excel("S:/expt/eeg/eeg01/analyses/erp_amplitude_500800ms_by9electrodes.csv", 
+                                                   col_names = FALSE)
+colnames(dat) = c('subject','trial','wordpic','repetition','ACP','LMR','amplitude')
+
+dat$repetition = factor(dat$repetition)
+dat$ACP = factor(dat$ACP)
+dat$LMR = factor(dat$LMR)
+
+nonew = subset(dat, repetition != 1)
+nonew$repetition = factor(nonew$repetition)
+```
+
+## estimate models
+```{r estimate, echo=T, results = 'hide', cache=T}
+
+mod_intercept = lmer(amplitude ~ 1 + (1 | subject), data = dat)
+mod_rep = lmer(amplitude ~ repetition + (1 | subject), 
+                      data = dat)
+mod_rep_ACP = lmer(amplitude ~ repetition + ACP + (1 | subject),
+                  data = dat)
+mod_rep_LMR = lmer(amplitude ~ repetition + LMR + (1 | subject),
+                  data = dat)
+mod_rep_ACP_LMR = lmer(amplitude ~ repetition + ACP + LMR + (1 | subject),
+                      data = dat)
+mod_interact = lmer(amplitude ~ repetition*ACP*LMR + (1 | subject),
+                   data = dat)
+```
+
+```{r estimatenonew, echo=T, results = 'hide', cache=T}
+
+mod_intercept_nonew = lmer(amplitude ~ 1 + (1 | subject), data = nonew, save_all_pars = T)
+mod_rep_nonew = lmer(amplitude ~ repetition + (1 | subject), 
+                      data = nonew)
+```
+
+
+## list summaries/anovas
+```{r bf, include = T, cache=T}
+
+summary(mod_rep)
+summary(mod_rep_ACP_LMR)
+summary(mod_interact)
+
+anova(mod_rep)
+anova(mod_rep_ACP_LMR)
+anova(mod_interact)
+
+```
+
+with no new
+```{r bfnonew, include = T, cache=T}
+summary(mod_rep_nonew)
+
+anova(mod_rep_nonew)
+
+```
+
+## Interaction effects for each repetition vs new
+
+```{r subdata, include=T, cache=T}
+dat_new_old1 = subset(dat, (repetition == 1) | (repetition == 2))
+dat_new_old1$repetition = factor(dat_new_old1$repetition)
+dat_new_old2 = subset(dat, (repetition == 1) | (repetition == 3))
+dat_new_old2$repetition = factor(dat_new_old2$repetition)
+dat_new_old3 = subset(dat, (repetition == 1) | (repetition == 3))
+dat_new_old3$repetition = factor(dat_new_old3$repetition)
+```
+
+```{r estimatesepmodel, echo=T, results = 'hide', cache=T}
+mod_rep1 = lmer(amplitude ~ repetition + (1 | subject), 
+                      data = dat_new_old1)
+mod_interact1 = lmer(amplitude ~ repetition*ACP*LMR + (1 | subject),
+                   data = dat_new_old1)
+mod_rep2 = lmer(amplitude ~ repetition + (1 | subject), 
+                      data = dat_new_old2)
+mod_interact2 = lmer(amplitude ~ repetition*ACP*LMR + (1 | subject),
+                   data = dat_new_old2)
+mod_rep3 = lmer(amplitude ~ repetition + (1 | subject), 
+                      data = dat_new_old3)
+mod_interact3 = lmer(amplitude ~ repetition*ACP*LMR + (1 | subject),
+                   data = dat_new_old3)
+```
+
+
+```{r bf_sep, include = T, cache=T}
+
+summary(mod_rep1)
+anova(mod_rep1)
+
+summary(mod_interact1)
+anova(mod_interact1)
+
+summary(mod_rep2)
+anova(mod_rep2)
+
+summary(mod_interact2)
+anova(mod_interact2)
+
+summary(mod_rep3)
+anova(mod_rep3)
+
+summary(mod_interact3)
+anova(mod_interact3)
+
+```
+
+
+```{r pairwise_test, include=T, cache=T}
+
+#### load left parietal erp
+
+erp_dat = import('S:/expt/eeg/eeg01/analyses/leftpar_erps_newold123.csv')
+erp_dat = erp_dat[,c(200:260)]
+erp_dat = data.frame(rowMeans(erp_dat))
+colnames(erp_dat) = c('amplitude')
+
+erp_dat$subject = rep(seq(1,15,1),4)
+erp_dat$repetition = c(rep('new',15),rep('o1',15), rep('o2',15),rep('o3',15))
+erp_nonew = subset(erp_dat, repetition != 'new')
+
+
+
+t.test(amplitude ~ repetition, data = subset(erp_nonew, repetition !='o2'),
+       paired = T)
+
+```
+

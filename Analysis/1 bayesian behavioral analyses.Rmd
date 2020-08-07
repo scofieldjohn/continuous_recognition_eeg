@@ -1,0 +1,222 @@
+---
+title: "Bayes Behavioral Analyses"
+output: pdf_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+#Set Up
+```{r setup2, include=T, results='hide', echo=F, cache=T}
+
+#load libraries
+library(brms)
+library(bayesplot)
+
+#load data
+path = 'S:/expt/eeg/eeg01/analyses/subject_data_files'
+data_files = list.files(path)[grep('csv', list.files(path))]
+parent_data = data.frame()
+for(x in data_files){
+  t_file = paste(c(path,'/', x), collapse = '')
+  temp = read.csv(t_file)
+  parent_data = rbind(parent_data, temp)
+  
+}
+
+parent_data = parent_data[ , -c(10)]
+datacom = parent_data
+
+#outliers
+zscores = scale(datacom$rt)
+summary(abs(zscores) < 3)
+dataACC = subset(datacom, abs(zscores) < 3)
+
+#now only keep correctly answered old1, old2, and old3 words
+dataBuild = subset(dataACC, event_type == 2 | event_type == 3 | event_type == 4)
+dataBuild$repetition = ifelse(dataBuild$event_type == 2, 'old1',
+                              ifelse(dataBuild$event_type==3,'old2','old3'))
+
+
+dataBuild$repetition = factor(dataBuild$repetition)
+dataBuild$lag_log = log(dataBuild$lag, base=2)
+
+data_all2 = dataBuild
+```
+
+#Accuracy
+```{r acc, include=T, cache=T}
+
+#### accuracy analysis
+data2 = subset(dataACC, !(event_type %in% c(0,5,10)))
+data2$condition = NA
+for(x in 1:nrow(data2)){
+  if(data2$event_type[x] == 1 | data2$event_type[x] == 6){
+    data2$condition[x] = 'New'
+  } else if(data2$event_type[x] == 2 | data2$event_type[x] == 7){
+    data2$condition[x] = 'Old1'
+  } else if(data2$event_type[x] == 3 | data2$event_type[x] == 8){
+    data2$condition[x] = 'Old2'
+  } else {
+    data2$condition[x] = 'Old3'
+  }
+}
+table(data2$condition)
+data3 = data2
+data3$lag_log = log(data3$lag, base=2)
+data3$acc = NA
+for(x in 1:nrow(data3)){
+  if(data3$event_type[x] == 1 | data3$event_type[x] == 2 | 
+     data3$event_type[x] == 3 | data3$event_type[x] == 4) {
+    data3$acc[x] = 1
+  } else {
+    data3$acc[x] = 0
+  }
+}
+
+data3$condition = factor(data3$condition)
+
+
+mod_pri = c(prior(normal(0,1), class=b),
+           prior(cauchy(0,2), class=sigma))
+```
+
+```{r acc_estimate, echo=T, results = 'hide', cache=T}
+macc_intercept = brm(acc ~ 1 + (1 | subject), data = data3, save_all_pars = T)
+macc_repetition = brm(acc ~ condition + (1 | subject), data = data3, prior = mod_pri, save_all_pars = T)
+macc_lag = brm(acc ~ lag_log + (1 | subject), data = data3, prior = mod_pri, save_all_pars = T)
+macc_main = brm(acc ~ condition + lag_log + (1 | subject), prior = mod_pri, data = data3, save_all_pars = T)
+macc_interact = brm(acc ~ condition*lag_log + (1 | subject), prior = mod_pri, data = data3, save_all_pars = T)
+
+```
+
+```{r acc_estimate2, echo=T, results = 'hide', cache=T}
+
+macc_wordpic = brm(acc ~ condition + word_picture + (1 | subject), data = data3, prior = mod_pri, save_all_pars = T)
+
+```
+
+```{r acc_resume, include=T, cache=T}
+#summary(macc_repetition)
+#summary(macc_main)
+#summary(macc_interact)
+
+bf_repetition = bayes_factor(macc_repetition, macc_intercept)$bf
+bf_lag = bayes_factor(macc_lag, macc_intercept)$bf
+bf_main = bayes_factor(macc_main, macc_intercept)$bf
+bf_interact = bayes_factor(macc_interact, macc_intercept)$bf
+
+#BF for interaction effect
+(BF_acc_in = bf_interact / bf_main)
+#BF for repetition
+(BF_acc_re = bf_main / bf_lag)          
+#BF for lag
+(BF_acc_la = bf_main / bf_repetition)  
+
+```
+
+```{r acc_resume2, include=T, cache=T}
+
+#evidence in favor of word_pic
+(bf_reppic = bayes_factor(macc_wordpic, macc_repetition)$bf)
+
+```
+
+
+#Response Time Analysis
+```{r rtanalysis, include=T, cache=T}
+
+#### MLM for RT
+data_allRT = data3
+data_all2 = subset(data_all2, repetition != 'new')
+data_all2$repetition = factor(data_all2$repetition)
+data_allRT$condition = factor(data_allRT$condition)
+mod_pri = c(prior(normal(0,1), class=b),
+           prior(cauchy(0,2), class=sigma))
+```
+
+```{r rtanalysis_estimate, echo=T, results = 'hide', cache=T}
+
+mrt_intercept = brm(rt ~ 1 + (1 | subject), data = data_all2, save_all_pars = T)
+mrt_repetition = brm(rt ~ repetition + (1 | subject), data = data_all2, prior = mod_pri, save_all_pars = T)
+mrt_lag = brm(rt ~ lag_log + (1 | subject), data = data_all2, prior = mod_pri, save_all_pars = T)
+mrt_main = brm(rt ~ repetition + lag_log + (1 | subject), data = data_all2, prior = mod_pri, save_all_pars = T)
+mrt_interact = brm(rt ~ repetition*lag_log + (1 | subject), data = data_all2, prior = mod_pri, save_all_pars = T)
+
+```
+
+```{r rtanalysis_estimate2, echo=T, results = 'hide', cache=T}
+
+mrt_wordpic = brm(rt ~ repetition + word_picture + (1 | subject), data = data_all2, prior = mod_pri, save_all_pars = T)
+
+```
+
+```{r rtanalysis_resume, include=T, cache=T}
+
+#summary(mrt_repetition)
+#summary(mrt_lag)
+#summary(mrt_main)
+#summary(mrt_interact)
+
+bfr_repetition = bayes_factor(mrt_repetition, mrt_intercept)$bf
+bfr_lag = bayes_factor(mrt_lag, mrt_intercept)$bf
+bfr_main = bayes_factor(mrt_main, mrt_intercept)$bf
+bfr_interact = bayes_factor(mrt_interact, mrt_intercept)$bf
+
+#BF for interaction effect
+(BF_rt_in = bfr_interact / bfr_main)     
+#BF for repetition
+(BF_rt_re = bfr_main / bfr_lag)         
+#BF for lag
+(BF_rt_la = bfr_main / bfr_repetition)   
+```
+
+```{r rtanalysis_resume2, include=T, cache=T}
+
+#evidence in favor of wordpic in RT
+(bfr_reppic = bayes_factor(mrt_wordpic, mrt_repetition)$bf)
+
+```
+
+
+```{r trfinmodrun, echo=T, results = 'hide', cache=T}
+
+fin_modx = brm(rt ~ repetition*lag_log + (1 | subject), data = data_all2, save_all_pars = T)
+```
+
+```{r trfinmodrunest, cache=T}
+
+summary(fin_modx)
+
+```
+
+```{r rtanalysis_finalmod2, echo=T, results = 'hide', cache=T}
+
+tmptmp = data_all2
+tmptmp$repetition = factor(tmptmp$repetition, levels = c('old2','old3','old1'), labels = c(
+  'OA','OB','OC'
+))
+tmptmpmod2 = brm(rt ~ repetition*lag_log + (1 | subject), data = tmptmp, save_all_pars = T)
+```
+
+
+```{r rtanalysis_end1, include=T, cache=T}
+
+summary(tmptmpmod2)
+```
+
+```{r rtanalysis_end, include=T, cache=T}
+
+mcmc_areas(as.array(fin_modx), pars = c(
+  'b_lag_log', 'b_repetitionold2:lag_log',
+  'b_repetitionold3:lag_log'
+), prob = .95)
+
+
+mcmc_areas(as.array(tmptmpmod), pars = c(
+  'b_lag_log', 'b_repetitionOB:lag_log'
+), prob = .95)
+
+```

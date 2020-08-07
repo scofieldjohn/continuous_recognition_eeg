@@ -1,0 +1,111 @@
+---
+title: "model_building"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, cache = T}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+# Model Building
+
+A maximal model is first estimated. The following models pruned off elements one by one, and then BIC values between models are compared.
+
+
+```{r setup2, include=F, cache = T}
+
+library(lme4)
+library(lmerTest)
+library(brms)
+
+
+#load data
+path = 'S:/expt/eeg/eeg01/analyses/subject_data_files'
+data_files = list.files(path)[grep('csv', list.files(path))]
+parent_data = data.frame()
+for(x in data_files){
+  t_file = paste(c(path,'/', x), collapse = '')
+  temp = read.csv(t_file)
+  parent_data = rbind(parent_data, temp)
+  
+}
+
+parent_data = parent_data[ , -c(10)]
+datacom = parent_data
+
+#outliers
+zscores = scale(datacom$rt)
+summary(abs(zscores) < 3)
+dataACC = subset(datacom, abs(zscores) < 3)
+
+#now only keep correctly answered old1, old2, and old3 words
+dataBuild = subset(dataACC, event_type == 2 | event_type == 3 | event_type == 4)
+dataBuild$repetition = ifelse(dataBuild$event_type == 2, 'old1',
+                              ifelse(dataBuild$event_type==3,'old2','old3'))
+
+
+dataBuild$repetition = factor(dataBuild$repetition)
+dataBuild$lag_log = log(dataBuild$lag, base=2)
+
+data_all2 = dataBuild
+
+```
+
+```{r build, echo=T, results='hide', cache = T}
+
+m1 = lmer(rt ~ lag_log * repetition + (lag_log*repetition | subject) + #wc
+           (lag_log*repetition | block), data = data_all2)
+m2 = lmer(rt ~ lag_log * repetition + (lag_log*repetition | subject) + #wc
+           (lag_log+repetition | block), data = data_all2)
+m3 = lmer(rt ~ lag_log * repetition + (lag_log*repetition | subject) + #wc
+           (lag_log | block), data = data_all2)
+m4 = lmer(rt ~ lag_log * repetition + (lag_log*repetition | subject) + #wc
+           (1 | block), data = data_all2)
+m5 = lmer(rt ~ lag_log * repetition + (lag_log*repetition | subject), #wc
+         data = data_all2)
+m6 = lmer(rt ~ lag_log * repetition + (lag_log+repetition | subject),
+         data = data_all2)
+m7 = lmer(rt ~ lag_log * repetition + (lag_log | subject),
+         data = data_all2)
+m8 = lmer(rt ~ lag_log * repetition + (1 | subject),
+         data = data_all2)
+
+```
+
+```{r check, cache = T}
+
+anova(m5,m6,m7,m8) #according to BIC, m8 has lowest, and next model up is not sig different.
+
+```
+
+#check compression
+```{r check_log, cache=T}
+
+m_reg = lmer(rt ~ lag * repetition + (1 | subject), data = data_all2)
+m_log = lmer(rt ~ lag_log * repetition + (1 | subject), data = data_all2)
+
+BIC(m_reg)
+BIC(m_log)
+
+anova(m_reg, m_log)
+
+```
+
+```{r rtanalysis_estimate, echo=T, results = 'hide', cache=T}
+
+mod_pri = c(prior(normal(0,1), class=b),
+           prior(cauchy(0,2), class=sigma))
+
+
+fin_reg = brm(rt ~ repetition*lag + (1 | subject), data = data_all2, save_all_pars = T)
+fin_log = brm(rt ~ repetition*lag_log + (1 | subject), data = data_all2, save_all_pars = T)
+
+BF_log_reg = bayes_factor(fin_log, fin_reg)$bf
+
+```
+
+```{r check_BF, cache=T}
+BF_log_reg
+
+```
